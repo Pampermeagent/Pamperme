@@ -174,10 +174,7 @@ Reply ONLY with JSON (no backticks, no markdown):
 
 async function processMessage(text, appointments) {
   const a = await analyzeMessage(text, appointments);
-  if (a.appointment_requested && !a.acrylic_requested && a.detected_address && a.proposed_datetime && a.client_name) {
-    try { await createAppointment(a.client_name, a.service_requested||"Nail Service", a.detected_address, a.proposed_datetime, a.service_duration_mins||60); console.log(`✅ Agendado: ${a.client_name}`); }
-    catch(e) { console.error("⚠️ Calendar error:", e.message); }
-  }
+  // NO agendar automaticamente - solo Diana confirma despues del pago
   return a;
 }
 
