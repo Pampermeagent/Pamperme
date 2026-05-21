@@ -170,8 +170,20 @@ MESSAGE: "${msg}"
 Reply ONLY with JSON (no backticks, no markdown):
 {"language":"en","needs_address":false,"detected_address":null,"client_email":null,"appointment_requested":false,"acrylic_requested":false,"out_of_coverage":false,"client_name":null,"service_requested":null,"service_duration_mins":60,"proposed_datetime":null,"zone_ok":true,"reply":"your plain text reply here"}`;
 
-  const response = await anthropic.messages.create({ model: "claude-haiku-4-5-20251001", max_tokens: 1000, messages: [{ role: "user", content: prompt }] });
-  return JSON.parse(response.content[0].text.replace(/```json|```/g,"").trim());
+  const response = await anthropic.messages.create({ model: "claude-haiku-4-5-20251001", max_tokens: 1500, messages: [{ role: "user", content: prompt }] });
+  let raw = response.content[0].text.replace(/```json|```/g,"").trim();
+  
+  // Limpiar caracteres de control y saltos de línea no escapados dentro del JSON
+  try {
+    return JSON.parse(raw);
+  } catch(e) {
+    // Si falla, intentar escapar saltos de línea en el campo "reply"
+    raw = raw.replace(/"reply":\s*"([\s\S]*?)"\s*}/, (match, replyContent) => {
+      const escaped = replyContent.replace(/\n/g, "\\n").replace(/\r/g, "");
+      return `"reply": "${escaped}"}`;
+    });
+    return JSON.parse(raw);
+  }
 }
 
 async function processMessage(text, appointments) {
@@ -409,7 +421,21 @@ El agente ya respondio al cliente y le indico que debe pagar para confirmar la c
 
 setInterval(checkYahooMail, 5 * 60 * 1000);
 
-app.get("/", (req, res) => res.send("<h2>💅 Pamper Me Agent — Active</h2>"));
+app.get("/", (req, res) => res.send("<h2>💅 Pamper Me Agent — Active</h2><p>Correos procesados: " + processedEmails.size + "</p><p><a href='/stats'>Ver estadísticas</a></p>"));
+
+app.get("/stats", (req, res) => {
+  const list = Array.from(processedEmails).map(id => {
+    const parts = id.split("-");
+    return `<li>${parts[0]} | ${parts[1] || ""}</li>`;
+  }).reverse().slice(0, 50).join("");
+  res.send(`<h2>📊 Últimos correos procesados (${processedEmails.size})</h2><ul>${list}</ul><p><a href='/'>Volver</a></p>`);
+});
+
+app.get("/reset", (req, res) => {
+  processedEmails.clear();
+  saveProcessedEmails(processedEmails);
+  res.send("<h2>✅ Lista de procesados limpiada</h2>");
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
