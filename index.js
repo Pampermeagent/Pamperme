@@ -118,8 +118,18 @@ STEP 5 - CHECK CALENDAR:
 - If there are already appointments that day: the new appointment must be within 20 minutes of the existing ones, otherwise suggest a different date.
 
 STEP 6 - PAYMENT REQUIRED:
-- Inform that appointments are confirmed only with payment (50% deposit).
+- ALWAYS remind the client that to confirm the appointment a 50% deposit is required.
 - Ask the client to reply to this email so the team can send the payment link.
+- Mention payment methods: Zelle, Venmo, CashApp, PayPal.
+
+STEP 7 - REMIND COVERAGE AREAS:
+- ALWAYS mention in the reply the service areas: Delaware County, Chester County, Philadelphia metropolitan area and surrounding areas of Philadelphia.
+- This way the client knows exactly where we serve.
+
+STEP 8 - IGNORE PROMOTIONAL/NON-CUSTOMER EMAILS:
+- If the message is promotional, advertising, newsletter, marketing offer, business solicitation, or NOT a real customer inquiry about nail services, DO NOT respond with a booking message.
+- Instead reply with: {"reply": "IGNORE_PROMO"} so we can skip it.
+- Only respond to messages that are genuine inquiries from potential or existing clients about Pamper Me nail services.
 
 OTHER RULES:
 - Hours: Tue-Fri 9:30am-5pm, Sat 10am-5pm. CLOSED Sunday and Monday.
@@ -216,12 +226,12 @@ async function sendReply(to, subject, replyText) {
     text: fullText,
   });
 
-  // Guardar copia en Gmail Sent
+  // Guardar copia en Gmail Sent del correo corporativo
   try {
     const auth = getGoogleAuth();
     const gmail = google.gmail({ version: "v1", auth });
     const raw = Buffer.from(
-      `From: Pamper Me Mobile Nails <diananails2006agent@gmail.com>\nTo: ${to}\nSubject: ${subj}\nContent-Type: text/plain; charset=utf-8\n\n${fullText}`
+      `From: Pamper Me Mobile Nails <agent@pampermemobilenails.com>\nTo: ${to}\nSubject: ${subj}\nContent-Type: text/plain; charset=utf-8\n\n${fullText}`
     ).toString("base64").replace(/\+/g, "-").replace(/\//g, "_");
     await gmail.users.messages.insert({
       userId: "me",
@@ -322,6 +332,12 @@ async function checkYahooMail() {
           console.log(`📋 Formulario Squarespace detectado, respondiendo a cliente: ${to}`);
         }
         
+        // Si es promocional, no responder
+        if (a.reply && a.reply.includes("IGNORE_PROMO")) {
+          console.log(`⏭️ Correo promocional ignorado: ${email.from}`);
+          continue;
+        }
+
         console.log(`📤 Enviando a: ${to}`);
         await sendReply(to, email.subject, a.reply);
         console.log(`✉️ Respuesta enviada a ${to}`);
