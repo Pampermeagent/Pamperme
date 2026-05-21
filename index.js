@@ -81,11 +81,12 @@ async function createAppointment(name, service, address, dt, mins) {
 
 async function analyzeMessage(msg, appointments) {
   const appts = appointments.length > 0 ? appointments.map(a=>`- ${a.title} at ${a.start}`).join("\n") : "No appointments yet.";
+  const todayFull = new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric",timeZone:"America/New_York"});
   const today = new Date().toLocaleDateString("en-US",{weekday:"long",timeZone:"America/New_York"});
   const time = new Date().toLocaleTimeString("en-US",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit"});
 
   const prompt = `You are a booking assistant for Pamper Me Mobile Nails & Spa (owner: Diana), based in Pennsylvania.
-TODAY: ${today}, ${time} Eastern Time
+TODAY: ${todayFull} at ${time} Eastern Time. Use this date to calculate things like "next Monday", "tomorrow", etc.
 
 BOOKING FLOW — follow this exact order:
 
@@ -107,10 +108,10 @@ STEP 3 - VERIFY ADDRESS:
 - If address is OUTSIDE coverage: apologize warmly and explain we cannot provide service in that area.
 - If address is INSIDE coverage: continue to Step 4.
 
-STEP 4 - INFORM TRAVEL FEE:
-- Let the client know a travel/accommodation fee applies and that our team will confirm the exact amount based on their location.
-- Ask the client to reply so the team can confirm the travel fee and send the payment link.
-- Payment accepted via Zelle (bank to bank) or other apps like Venmo/CashApp/PayPal.
+STEP 4 - INFORM TRAVEL FEE (IMPORTANT - ALWAYS MENTION):
+- ALWAYS clearly mention that a travel/accommodation fee applies to all mobile services because we bring our luxury services directly to the client's location.
+- The exact amount will be confirmed by our team based on the distance to their location.
+- Payment accepted via Zelle (bank to bank), Venmo, CashApp, or PayPal.
 
 STEP 5 - CHECK CALENDAR:
 - If the requested date has a "Vacaciones", "No disponible", "Blocked", "Holiday", or "Out of office" event: apologize and let the client know we are not available that day, and suggest they pick another date.
@@ -155,6 +156,8 @@ In Spanish: "Con cariño,
 - Be warm, cordial, professional. Use occasional emoji 💅✨
 - NEVER use markdown (no asterisks, no bold, no bullets). Plain text only.
 - Keep replies concise and friendly.
+- IMPORTANT: The business name is ALWAYS "Pamper Me Mobile Nails & Spa" in English. NEVER translate it to Spanish (do NOT say "Uñas y Spa Móvil"). Keep it exactly as "Pamper Me Mobile Nails & Spa" in any language.
+- CRITICAL: Use real paragraph breaks (double newlines \n\n) between the 3 paragraphs. Each paragraph must be visually separated.
 
 SQUARESPACE FORMS: If message has NAME/PHONE/EMAIL/ADDRESS OF SERVICE/SERVICE DETAILS fields, extract automatically and use client EMAIL to reply.
 
@@ -220,7 +223,7 @@ async function sendReply(to, subject, replyText) {
   // Enviar con SendGrid desde el correo corporativo
   await sgMail.send({
     to,
-    from: { email: "agent@pampermemobilenails.com", name: "Pamper Me Mobile Nails" },
+    from: { email: "agent@pampermemobilenails.com", name: "\"Pamper Me\" Mobile Nails & Spa ✨" },
     replyTo: "agent@pampermemobilenails.com",
     subject: subj,
     text: fullText,
