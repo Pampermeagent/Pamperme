@@ -6,14 +6,14 @@ const { google } = require("googleapis");
 const Anthropic = require("@anthropic-ai/sdk");
 const Imap = require("imap");
 const { simpleParser } = require("mailparser");
-const sgMail = require("@sendgrid/mail");
+const nodemailer = require("nodemailer");
+const fs = require("fs");
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
 // Anti-duplicados: guarda IDs en archivo para sobrevivir reinicios
-const fs = require("fs");
 const PROCESSED_FILE = "/tmp/processed_emails.json";
 
 function loadProcessedEmails() {
@@ -28,7 +28,7 @@ function loadProcessedEmails() {
 
 function saveProcessedEmails(set) {
   try {
-    const arr = Array.from(set).slice(-200); // Guardar solo los últimos 200
+    const arr = Array.from(set).slice(-200);
     fs.writeFileSync(PROCESSED_FILE, JSON.stringify(arr));
   } catch(e) {}
 }
@@ -52,19 +52,31 @@ WAXING: Eyebrow $30, Lip $20, Chin $20
 NOTE: Travel fee applies. Natural nails ONLY — NO acrylics.`
 };
 
+// ─── GOOGLE AUTH ────────────────────────────────────────────────────────────
 function getGoogleAuth() {
-  const auth = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, process.env.GOOGLE_REDIRECT_URI);
+  const auth = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI
+  );
   auth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
   return auth;
 }
 
+// ─── GOOGLE CALENDAR ─────────────────────────────────────────────────────────
 async function getUpcomingAppointments() {
   const auth = getGoogleAuth();
   const calendar = google.calendar({ version: "v3", auth });
   const now = new Date();
   const start = new Date(now); start.setHours(0,0,0,0);
   const end = new Date(now); end.setDate(end.getDate()+1); end.setHours(23,59,59,999);
-  const res = await calendar.events.list({ calendarId: "primary", timeMin: start.toISOString(), timeMax: end.toISOString(), singleEvents: true, orderBy: "startTime" });
+  const res = await calendar.events.list({
+    calendarId: "primary",
+    timeMin: start.toISOString(),
+    timeMax: end.toISOString(),
+    singleEvents: true,
+    orderBy: "startTime"
+  });
   return (res.data.items||[]).map(e=>({ title: e.summary, start: e.start.dateTime, address: e.location||"" }));
 }
 
@@ -79,8 +91,11 @@ async function createAppointment(name, service, address, dt, mins) {
   }});
 }
 
+// ─── CLAUDE AI ───────────────────────────────────────────────────────────────
 async function analyzeMessage(msg, appointments) {
-  const appts = appointments.length > 0 ? appointments.map(a=>`- ${a.title} at ${a.start}`).join("\n") : "No appointments yet.";
+  const appts = appointments.length > 0
+    ? appointments.map(a=>`- ${a.title} at ${a.start}`).join("\n")
+    : "No appointments yet.";
   const today = new Date().toLocaleDateString("en-US",{weekday:"long",timeZone:"America/New_York"});
   const time = new Date().toLocaleTimeString("en-US",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit"});
 
@@ -139,9 +154,9 @@ The main content of the response — ask for missing info, confirm coverage area
 
 PARAGRAPH 3 - SIGN OFF (always end with this exact text):
 "Warmly,
-\"Pamper Me\" Mobile Nails & Spa ✨"
+"Pamper Me" Mobile Nails & Spa ✨"
 In Spanish: "Con cariño,
-\"Pamper Me\" Mobile Nails & Spa ✨"
+"Pamper Me" Mobile Nails & Spa ✨"
 - Be warm, cordial, professional. Use occasional emoji 💅✨
 - NEVER use markdown (no asterisks, no bold, no bullets). Plain text only.
 - Keep replies concise and friendly.
@@ -155,33 +170,41 @@ MESSAGE: "${msg}"
 Reply ONLY with JSON (no backticks, no markdown):
 {"language":"en","needs_address":false,"detected_address":null,"client_email":null,"appointment_requested":false,"acrylic_requested":false,"out_of_coverage":false,"client_name":null,"service_requested":null,"service_duration_mins":60,"proposed_datetime":null,"zone_ok":true,"reply":"your plain text reply here"}`;
 
-  const response = await anthropic.messages.create({ model: "claude-haiku-4-5-20251001", max_tokens: 1000, messages: [{ role: "user", content: prompt }] });
+  const response = await anthropic.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 1000,
+    messages: [{ role: "user", content: prompt }]
+  });
   return JSON.parse(response.content[0].text.replace(/```json|```/g,"").trim());
 }
 
 async function processMessage(text, appointments) {
   const a = await analyzeMessage(text, appointments);
   if (a.appointment_requested && !a.acrylic_requested && a.detected_address && a.proposed_datetime && a.client_name) {
-    try { await createAppointment(a.client_name, a.service_requested||"Nail Service", a.detected_address, a.proposed_datetime, a.service_duration_mins||60); console.log(`✅ Agendado: ${a.client_name}`); }
-    catch(e) { console.error("⚠️ Calendar error:", e.message); }
+    try {
+      await createAppointment(a.client_name, a.service_requested||"Nail Service", a.detected_address, a.proposed_datetime, a.service_duration_mins||60);
+      console.log(`✅ Agendado: ${a.client_name}`);
+    } catch(e) { console.error("⚠️ Calendar error:", e.message); }
   }
   return a;
 }
 
+// ─── GMAIL IMAP (LEER) ───────────────────────────────────────────────────────
 function getImap() {
-  return new Imap({ 
-    user: process.env.AGENT_EMAIL, 
-    password: process.env.AGENT_APP_PASSWORD, 
-    host: "imap.gmail.com", 
-    port: 993, 
-    tls: true, 
-    tlsOptions: { rejectUnauthorized: false } 
+  return new Imap({
+    user: process.env.AGENT_EMAIL,
+    password: process.env.AGENT_APP_PASSWORD,
+    host: "imap.gmail.com",
+    port: 993,
+    tls: true,
+    tlsOptions: { rejectUnauthorized: false }
   });
 }
 
 async function getUnreadEmails() {
   return new Promise((resolve, reject) => {
-    const imap = getImap(); const results = [];
+    const imap = getImap();
+    const results = [];
     imap.once("ready", () => {
       imap.openBox("INBOX", false, (err) => {
         if (err) return reject(err);
@@ -191,7 +214,18 @@ async function getUnreadEmails() {
           const fetch = imap.fetch(uids.slice(0,5), { bodies: "", markSeen: true });
           fetch.on("message", (msg) => {
             let buf = "";
-            msg.on("body", (stream) => { stream.on("data", c => buf+=c.toString("utf8")); stream.once("end", async () => { const p = await simpleParser(buf); results.push({ from: p.from?.text||"", replyTo: p.replyTo?.text||p.from?.text||"", subject: p.subject||"", body: p.text||"" }); }); });
+            msg.on("body", (stream) => {
+              stream.on("data", c => buf+=c.toString("utf8"));
+              stream.once("end", async () => {
+                const p = await simpleParser(buf);
+                results.push({
+                  from: p.from?.text||"",
+                  replyTo: p.replyTo?.text||p.from?.text||"",
+                  subject: p.subject||"",
+                  body: p.text||""
+                });
+              });
+            });
           });
           fetch.once("end", () => { setTimeout(()=>{ imap.end(); resolve(results); }, 1000); });
         });
@@ -202,37 +236,31 @@ async function getUnreadEmails() {
   });
 }
 
+// ─── NODEMAILER (ENVIAR) ─────────────────────────────────────────────────────
 async function sendReply(to, subject, replyText) {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-  const fullText = `${replyText}\n\n---\n"Pamper Me" Mobile Nails & Spa\n📱 215-490-1515\n🌐 pampermemobilenails.com`;
-  const subj = subject.startsWith("Re:") ? subject : `Re: ${subject}`;
-  
-  // Enviar con SendGrid desde el correo corporativo
-  await sgMail.send({
-    to,
-    from: { email: "agent@pampermemobilenails.com", name: "Pamper Me Mobile Nails" },
-    replyTo: "agent@pampermemobilenails.com",
-    subject: subj,
-    text: fullText,
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.AGENT_EMAIL,
+      pass: process.env.AGENT_APP_PASSWORD
+    }
   });
 
-  // Guardar copia en Gmail Sent
-  try {
-    const auth = getGoogleAuth();
-    const gmail = google.gmail({ version: "v1", auth });
-    const raw = Buffer.from(
-      `From: Pamper Me Mobile Nails <diananails2006agent@gmail.com>\nTo: ${to}\nSubject: ${subj}\nContent-Type: text/plain; charset=utf-8\n\n${fullText}`
-    ).toString("base64").replace(/\+/g, "-").replace(/\//g, "_");
-    await gmail.users.messages.insert({
-      userId: "me",
-      resource: { raw, labelIds: ["SENT"] },
-    });
-    console.log(`📁 Copia guardada en Gmail Sent`);
-  } catch(gmailErr) {
-    console.error("⚠️ No se pudo guardar copia en Gmail:", gmailErr.message);
-  }
+  const fullText = `${replyText}\n\n---\n"Pamper Me" Mobile Nails & Spa\n📱 215-490-1515\n🌐 pampermemobilenails.com`;
+  const subj = subject.startsWith("Re:") ? subject : `Re: ${subject}`;
+
+  await transporter.sendMail({
+    from: `"Pamper Me Mobile Nails" <${process.env.AGENT_EMAIL}>`,
+    to,
+    replyTo: process.env.AGENT_EMAIL,
+    subject: subj,
+    text: fullText
+  });
+
+  console.log(`📁 Email enviado via Gmail SMTP a ${to}`);
 }
 
+// ─── WEBHOOKS TWILIO ─────────────────────────────────────────────────────────
 app.post("/webhook/sms", async (req, res) => {
   const body = req.body.Body||"", from = req.body.From||"";
   console.log(`💬 SMS de ${from}: ${body}`);
@@ -260,33 +288,34 @@ app.post("/webhook/voice/process", async (req, res) => {
     const a = await processMessage(speech, appts);
     twiml.say({ voice: a.language==="es"?"Polly.Conchita":"Polly.Joanna" }, a.reply);
     if (a.appointment_requested && a.proposed_datetime) {
-      await twilioClient.messages.create({ from: process.env.TWILIO_PHONE_NUMBER, to: caller, body: `✅ Pamper Me: Appointment confirmed! 💅 ${a.service_requested||"Nail Service"} at ${a.detected_address}. Questions: 215-490-1515` });
+      await twilioClient.messages.create({
+        from: process.env.TWILIO_PHONE_NUMBER,
+        to: caller,
+        body: `✅ Pamper Me: Appointment confirmed! 💅 ${a.service_requested||"Nail Service"} at ${a.detected_address}. Questions: 215-490-1515`
+      });
     }
   } catch(err) { twiml.say({ voice: "Polly.Joanna" }, "Sorry, please text 215-490-1515 to book."); }
   res.type("text/xml").send(twiml.toString());
 });
 
-async function checkYahooMail() {
+// ─── CHECK GMAIL ─────────────────────────────────────────────────────────────
+async function checkGmail() {
   try {
     const emails = await getUnreadEmails();
     if (emails.length===0) { console.log("📭 No hay correos nuevos"); return; }
-    console.log(`📧 ${emails.length} correo(s) nuevo(s) en Yahoo`);
+    console.log(`📧 ${emails.length} correo(s) nuevo(s) en Gmail`);
     const appts = await getUpcomingAppointments().catch(()=>{ console.log("⚠️ Calendar no disponible"); return []; });
+
     for (const email of emails) {
       try {
-        // Crear ID único para este correo
         const emailId = `${email.from}-${email.subject}-${(email.body||"").substring(0,50)}`;
-        
-        // Verificar si ya fue procesado
+
         if (processedEmails.has(emailId)) {
           console.log(`⏭️ Correo ya procesado, saltando: ${email.from}`);
           continue;
         }
-        
-        // Marcar como procesado
+
         processedEmails.add(emailId);
-        
-        // Guardar en disco para sobrevivir reinicios
         saveProcessedEmails(processedEmails);
 
         console.log(`📨 Procesando de: ${email.from}`);
@@ -294,21 +323,21 @@ async function checkYahooMail() {
         console.log(`📝 Contenido: ${body.substring(0,100)}`);
         const a = await processMessage(body, appts);
         console.log(`🤖 Respuesta lista: ${a.reply.substring(0,50)}`);
-        
-        // Si es formulario de Squarespace, responder al EMAIL del cliente
+
         let to = email.replyTo||email.from;
         if (a.client_email) {
           to = a.client_email;
           console.log(`📋 Formulario Squarespace detectado, respondiendo a cliente: ${to}`);
         }
-        
+
         console.log(`📤 Enviando a: ${to}`);
         await sendReply(to, email.subject, a.reply);
         console.log(`✉️ Respuesta enviada a ${to}`);
-        
-        // Enviar aviso urgente a Diana SOLO si tiene toda la info completa
-        if (a.appointment_requested && !a.acrylic_requested && !a.out_of_coverage && 
+
+        // Aviso urgente a Diana si hay cita completa
+        if (a.appointment_requested && !a.acrylic_requested && !a.out_of_coverage &&
             a.detected_address && a.service_requested && a.client_name) {
+
           const dianaAlert = `🚨 NUEVA SOLICITUD DE CITA - ACCIÓN REQUERIDA 🚨
 
 Cliente: ${a.client_name || "No especificado"}
@@ -331,16 +360,16 @@ El agente ya respondio al cliente y le indico que debe pagar para confirmar la c
             "🚨 NUEVA SOLICITUD DE CITA - ACCION REQUERIDA",
             dianaAlert
           );
-          console.log(`🔔 Aviso urgente enviado a Diana por email`);
+          console.log(`🔔 Aviso urgente enviado a Diana`);
 
-          // Crear evento urgente en Google Calendar
+          // Evento urgente en Google Calendar
           try {
             const auth = getGoogleAuth();
             const calendar = google.calendar({ version: "v3", auth });
             const now = new Date();
-            const eventStart = new Date(now.getTime() + 2 * 60000); // 2 minutos desde ahora
-            const eventEnd = new Date(now.getTime() + 17 * 60000); // 15 minutos de duración
-            
+            const eventStart = new Date(now.getTime() + 2 * 60000);
+            const eventEnd = new Date(now.getTime() + 17 * 60000);
+
             await calendar.events.insert({
               calendarId: "primary",
               resource: {
@@ -350,32 +379,30 @@ El agente ya respondio al cliente y le indico que debe pagar para confirmar la c
                 end: { dateTime: eventEnd.toISOString(), timeZone: "America/New_York" },
                 reminders: {
                   useDefault: false,
-                  overrides: [
-                    { method: "popup", minutes: 0 },
-                  ],
-                },
-              },
+                  overrides: [{ method: "popup", minutes: 0 }]
+                }
+              }
             });
             console.log(`📅 Evento urgente creado en Google Calendar`);
           } catch(calErr) {
             console.error("⚠️ No se pudo crear evento en Calendar:", calErr.message);
           }
         }
-      } catch(e) { 
+      } catch(e) {
         console.error(`❌ Error correo:`, e.message);
         console.error(`❌ Stack:`, e.stack);
       }
     }
-  } catch(err) { console.error("❌ Yahoo check:", err.message, err.stack); }
+  } catch(err) { console.error("❌ Gmail check:", err.message, err.stack); }
 }
 
-setInterval(checkYahooMail, 5 * 60 * 1000);
+setInterval(checkGmail, 5 * 60 * 1000);
 
 app.get("/", (req, res) => res.send("<h2>💅 Pamper Me Agent — Active</h2>"));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Pamper Me Agent running on port ${PORT}`);
-  console.log(`📧 Checking Yahoo Mail every 5 minutes...`);
-  checkYahooMail();
+  console.log(`📧 Checking Gmail every 5 minutes...`);
+  checkGmail();
 });
