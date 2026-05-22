@@ -394,8 +394,8 @@ El agente ya respondio al cliente y le indico que debe pagar para confirmar la c
             await calendar.events.insert({
               calendarId: "primary",
               resource: {
-                summary: `🚨 NUEVA SOLICITUD - ${a.client_name || "Cliente"}`,
-                description: `ACCION REQUERIDA:\n\nCliente: ${a.client_name || "No especificado"}\nEmail: ${a.client_email || to}\nDireccion: ${a.detected_address || "No especificada"}\nServicio: ${a.service_requested || "No especificado"}\nFecha: ${a.proposed_datetime || "Por confirmar"}\n\n1. Confirmar travel fee\n2. Enviar link de pago (50% deposito)`,
+                summary: `🚨 REVISAR SOLICITUD (NO ES CITA) - ${a.client_name || "Cliente"}`,
+                description: `ESTO ES SOLO UN AVISO - LA CITA NO ESTÁ CONFIRMADA\n\nACCION REQUERIDA POR DIANA:\n\nCliente: ${a.client_name || "No especificado"}\nEmail: ${a.client_email || to}\nDireccion: ${a.detected_address || "No especificada"}\nServicio: ${a.service_requested || "No especificado"}\nFecha solicitada: ${a.proposed_datetime || "Por confirmar"}\n\nPASOS:\n1. Revisar la solicitud\n2. Confirmar travel fee al cliente\n3. Enviar link de pago (50% deposito)\n4. SOLO después del pago - agendar la cita real en Calendar`,
                 start: { dateTime: eventStart.toISOString(), timeZone: "America/New_York" },
                 end: { dateTime: eventEnd.toISOString(), timeZone: "America/New_York" },
                 reminders: {
