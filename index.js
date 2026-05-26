@@ -36,6 +36,27 @@ function saveProcessedEmails(set) {
 const processedEmails = loadProcessedEmails();
 console.log(`📋 Correos procesados previamente: ${processedEmails.size}`);
 
+// Registro de respuestas enviadas por cliente con timestamp (en memoria)
+const RESPONSES_FILE = "/tmp/sent_responses.json";
+
+function loadSentResponses() {
+  try {
+    if (fs.existsSync(RESPONSES_FILE)) {
+      return new Map(JSON.parse(fs.readFileSync(RESPONSES_FILE, "utf8")));
+    }
+  } catch(e) {}
+  return new Map();
+}
+
+function saveSentResponses(map) {
+  try {
+    fs.writeFileSync(RESPONSES_FILE, JSON.stringify(Array.from(map.entries())));
+  } catch(e) {}
+}
+
+const sentResponses = loadSentResponses();
+console.log(`📤 Respuestas enviadas registradas: ${sentResponses.size}`);
+
 const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -113,17 +134,19 @@ STEP 3 - VERIFY ADDRESS:
 STEP 4 - INFORM TRAVEL FEE (IMPORTANT - ALWAYS MENTION):
 - ALWAYS clearly mention that a travel/accommodation fee applies to all mobile services because we bring our luxury services directly to the client's location.
 - The exact amount will be confirmed by our team based on the distance to their location.
-- Payment accepted via Zelle (bank to bank), Venmo, CashApp, or PayPal.
+- Do NOT mention specific payment methods. Just say the team will send a payment link.
 
-STEP 5 - CHECK CALENDAR:
-- If the requested date has a "Vacaciones", "No disponible", "Blocked", "Holiday", or "Out of office" event: apologize and let the client know we are not available that day, and suggest they pick another date.
-- If it is the first appointment of the day: offer to schedule it.
-- If there are already appointments that day: the new appointment must be within 20 minutes of the existing ones, otherwise suggest a different date.
+STEP 5 - DO NOT CONFIRM DATES OR TIMES:
+- NEVER confirm a specific date or time as available.
+- NEVER say "we can schedule you for X day at Y time".
+- Instead say: "Our team will review the calendar and confirm availability for your preferred date, or suggest the closest available date that works best for everyone."
+- Diana is the one who decides which dates are available and confirms with the client.
+- The agent's job is only to collect the information (name, address, service, preferred date) and pass it to Diana.
 
 STEP 6 - PAYMENT REQUIRED:
 - ALWAYS remind the client that to confirm the appointment a 50% deposit is required.
 - Ask the client to reply to this email so the team can send the payment link.
-- Mention payment methods: Zelle, Venmo, CashApp, PayPal.
+- Do NOT specify payment methods - the team will send the payment link directly.
 
 STEP 7 - REMIND COVERAGE AREAS:
 - ALWAYS mention in the reply the service areas: Delaware County, Chester County, Philadelphia metropolitan area and surrounding areas of Philadelphia.
@@ -352,9 +375,22 @@ async function checkYahooMail() {
           continue;
         }
 
+        // Verificar si ya respondimos a este cliente recientemente (24 horas)
+        const lastSent = sentResponses.get(to);
+        const now = Date.now();
+        if (lastSent && (now - lastSent) < 24 * 60 * 60 * 1000) {
+          const horasAtras = Math.floor((now - lastSent) / (60 * 60 * 1000));
+          console.log(`⏭️ Ya respondimos a ${to} hace ${horasAtras}h, saltando`);
+          continue;
+        }
+
         console.log(`📤 Enviando a: ${to}`);
         await sendReply(to, email.subject, a.reply);
         console.log(`✉️ Respuesta enviada a ${to}`);
+        
+        // Registrar el envío
+        sentResponses.set(to, now);
+        saveSentResponses(sentResponses);
         
         // Enviar aviso urgente a Diana SOLO si tiene toda la info completa
         if (a.appointment_requested && !a.acrylic_requested && !a.out_of_coverage && 
@@ -422,6 +458,15 @@ El agente ya respondio al cliente y le indico que debe pagar para confirmar la c
 setInterval(checkYahooMail, 5 * 60 * 1000);
 
 app.get("/", (req, res) => res.send("<h2>💅 Pamper Me Agent — Active</h2><p>Correos procesados: " + processedEmails.size + "</p><p><a href='/stats'>Ver estadísticas</a></p>"));
+
+app.get("/sent", (req, res) => {
+  const entries = Array.from(sentResponses.entries()).sort((a,b) => b[1] - a[1]).slice(0, 50);
+  const list = entries.map(([email, timestamp]) => {
+    const date = new Date(timestamp).toLocaleString("es-ES", { timeZone: "America/New_York" });
+    return `<li>${email} - ${date}</li>`;
+  }).join("");
+  res.send(`<h2>📤 Últimas respuestas enviadas (${sentResponses.size})</h2><ul>${list}</ul><p><a href='/'>Volver</a></p>`);
+});
 
 app.get("/stats", (req, res) => {
   const list = Array.from(processedEmails).map(id => {
