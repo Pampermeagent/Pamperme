@@ -457,7 +457,64 @@ El agente ya respondio al cliente y le indico que debe pagar para confirmar la c
 
 setInterval(checkYahooMail, 5 * 60 * 1000);
 
-app.get("/", (req, res) => res.send("<h2>💅 Pamper Me Agent — Active</h2><p>Correos procesados: " + processedEmails.size + "</p><p><a href='/stats'>Ver estadísticas</a></p>"));
+app.get("/", (req, res) => res.send("<h2>💅 Pamper Me Agent — Active</h2><p>Correos procesados: " + processedEmails.size + "</p><p><a href='/stats'>Ver estadísticas</a> | <a href='/sent'>Respuestas enviadas</a></p>"));
+
+// CORS para el widget de chat
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.sendStatus(200);
+  next();
+});
+
+// Endpoint para chat widget en la web
+app.post("/chat", async (req, res) => {
+  try {
+    const { message, history } = req.body;
+    if (!message) return res.json({ reply: "Por favor escribe un mensaje." });
+
+    console.log(`💬 Chat web: ${message}`);
+
+    // Construir contexto con historial
+    const fullMessage = history && history.length > 0
+      ? `Conversación previa:\n${history.map(h => `${h.role}: ${h.text}`).join("\n")}\n\nNuevo mensaje: ${message}`
+      : message;
+
+    const a = await processMessage(fullMessage, []);
+    
+    // Si el cliente dio info completa, avisar a Diana
+    if (a.appointment_requested && !a.acrylic_requested && !a.out_of_coverage && 
+        a.detected_address && a.service_requested && a.client_name) {
+      try {
+        const alert = `🚨 NUEVA SOLICITUD DESDE EL CHAT WEB 🚨
+
+Cliente: ${a.client_name}
+Email: ${a.client_email || "No proporcionado"}
+Dirección: ${a.detected_address}
+Servicio: ${a.service_requested}
+Fecha solicitada: ${a.proposed_datetime || "Por confirmar"}
+
+ACCIÓN REQUERIDA:
+1. Confirmar el costo del travel fee
+2. Enviar link de pago al cliente (50% deposito)
+3. Confirmar la cita
+
+--- Chat Widget Pamper Me ---`;
+
+        await sendReply("agent@pampermemobilenails.com", "🚨 NUEVA SOLICITUD DESDE CHAT WEB", alert);
+        console.log(`🔔 Aviso desde chat enviado a Diana`);
+      } catch(alertErr) {
+        console.error("⚠️ Error enviando alerta:", alertErr.message);
+      }
+    }
+
+    res.json({ reply: a.reply });
+  } catch(err) {
+    console.error("❌ Chat error:", err.message);
+    res.json({ reply: "Disculpa, tuve un problema técnico. Por favor escríbenos a agent@pampermemobilenails.com" });
+  }
+});
 
 app.get("/sent", (req, res) => {
   const entries = Array.from(sentResponses.entries()).sort((a,b) => b[1] - a[1]).slice(0, 50);
