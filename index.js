@@ -341,8 +341,9 @@ async function checkYahooMail() {
           continue;
         }
 
-        // Crear ID único para este correo
-        const emailId = `${email.from}-${email.subject}-${(email.body||"").substring(0,50)}`;
+        // Crear ID único para este correo (usa más caracteres del body para evitar falsos duplicados)
+        const bodyHash = (email.body||"").length + "-" + (email.body||"").substring(0, 200);
+        const emailId = `${email.from}-${email.subject}-${bodyHash}`;
         
         // Verificar si ya fue procesado
         if (processedEmails.has(emailId)) {
