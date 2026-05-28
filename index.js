@@ -111,10 +111,17 @@ TODAY: ${todayFull} at ${time} Eastern Time. Use this date to calculate things l
 
 BOOKING FLOW — follow this exact order:
 
-STEP 1 - COLLECT BASIC INFO FIRST:
-- If the client has NOT provided BOTH a date AND an address, ask for both before doing anything else.
-- Do NOT proceed to the next steps until you have both date and address.
-- Example: "To get started, could you please let us know your preferred date and the address where you would like us to come?"
+STEP 1 - COLLECT ALL REQUIRED INFO FIRST:
+You MUST collect ALL of these before considering the request complete:
+  1. Client full name
+  2. Email address (REQUIRED - so the team can contact them)
+  3. Phone number (REQUIRED - so the team can contact them)
+  4. Service address (where they want the service)
+  5. Preferred date
+  6. Service they want
+- If ANY of these is missing, politely ask for the missing information before proceeding.
+- Be specific about what you still need. Example: "To complete your booking request, could you please share your full name, email, phone number, the service address, your preferred date, and which service you're interested in?"
+- Do NOT pass the request to the team until you have ALL the information above.
 
 STEP 2 - DETECT SENIOR/SPECIAL NEEDS:
 - If the client mentions ANY of these keywords: "mom", "mama", "mother", "mamá", "madre", "elderly", "grandma", "abuela", "disabled", "wheelchair", "special needs", "discapacidad", "fungus", "hongos", "diabetic", "diabético", or any indication of limited mobility:
@@ -191,7 +198,7 @@ APPOINTMENTS TODAY/THIS WEEK: ${appts}
 MESSAGE: "${msg}"
 
 Reply ONLY with JSON (no backticks, no markdown):
-{"language":"en","needs_address":false,"detected_address":null,"client_email":null,"appointment_requested":false,"acrylic_requested":false,"out_of_coverage":false,"client_name":null,"service_requested":null,"service_duration_mins":60,"proposed_datetime":null,"zone_ok":true,"reply":"your plain text reply here"}`;
+{"language":"en","needs_address":false,"detected_address":null,"client_email":null,"client_phone":null,"appointment_requested":false,"acrylic_requested":false,"out_of_coverage":false,"client_name":null,"service_requested":null,"service_duration_mins":60,"proposed_datetime":null,"zone_ok":true,"reply":"your plain text reply here"}`;
 
   const response = await anthropic.messages.create({ model: "claude-haiku-4-5-20251001", max_tokens: 1500, messages: [{ role: "user", content: prompt }] });
   let raw = response.content[0].text.replace(/```json|```/g,"").trim();
@@ -484,9 +491,10 @@ app.post("/chat", async (req, res) => {
 
     const a = await processMessage(fullMessage, []);
     
-    // Si el cliente dio info completa, avisar a Diana
+    // Si el cliente dio TODA la info completa (incluyendo contacto), avisar a Diana
     if (a.appointment_requested && !a.acrylic_requested && !a.out_of_coverage && 
-        a.detected_address && a.service_requested && a.client_name) {
+        a.detected_address && a.service_requested && a.client_name && 
+        a.client_email && a.client_phone) {
       try {
         const alert = `🚨 NUEVA SOLICITUD DESDE EL CHAT WEB 🚨
 
