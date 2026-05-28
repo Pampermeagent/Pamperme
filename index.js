@@ -513,6 +513,28 @@ ACCIÓN REQUERIDA:
 
         await sendReply("agent@pampermemobilenails.com", "🚨 NUEVA SOLICITUD DESDE CHAT WEB", alert);
         console.log(`🔔 Aviso desde chat enviado a Diana`);
+
+        // Crear evento en Google Calendar
+        try {
+          const auth = getGoogleAuth();
+          const calendar = google.calendar({ version: "v3", auth });
+          const now = new Date();
+          const eventStart = new Date(now.getTime() + 2 * 60000);
+          const eventEnd = new Date(now.getTime() + 17 * 60000);
+          await calendar.events.insert({
+            calendarId: "primary",
+            resource: {
+              summary: `🚨 REVISAR SOLICITUD WEB (NO ES CITA) - ${a.client_name || "Cliente"}`,
+              description: `ESTO ES SOLO UN AVISO - LA CITA NO ESTÁ CONFIRMADA\n\nSolicitud desde el CHAT WEB\n\nCliente: ${a.client_name}\nEmail: ${a.client_email}\nTeléfono: ${a.client_phone}\nDirección: ${a.detected_address}\nServicio: ${a.service_requested}\nFecha solicitada: ${a.proposed_datetime || "Por confirmar"}\n\nPASOS:\n1. Revisar la solicitud\n2. Confirmar travel fee\n3. Enviar link de pago (50% deposito)\n4. SOLO después del pago - agendar la cita real`,
+              start: { dateTime: eventStart.toISOString(), timeZone: "America/New_York" },
+              end: { dateTime: eventEnd.toISOString(), timeZone: "America/New_York" },
+              reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 0 }] },
+            },
+          });
+          console.log(`📅 Evento web creado en Google Calendar`);
+        } catch(calErr) {
+          console.error("⚠️ No se pudo crear evento web en Calendar:", calErr.message);
+        }
       } catch(alertErr) {
         console.error("⚠️ Error enviando alerta:", alertErr.message);
       }
