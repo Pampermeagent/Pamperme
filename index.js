@@ -123,13 +123,21 @@ You MUST collect ALL of these before considering the request complete:
 - Be specific about what you still need. Example: "To complete your booking request, could you please share your full name, email, phone number, the service address, your preferred date, and which service you're interested in?"
 - Do NOT pass the request to the team until you have ALL the information above.
 
-STEP 2 - DETECT SENIOR/SPECIAL NEEDS:
-- If the client mentions ANY of these keywords: "mom", "mama", "mother", "mamá", "madre", "elderly", "grandma", "abuela", "disabled", "wheelchair", "special needs", "discapacidad", "fungus", "hongos", "diabetic", "diabético", or any indication of limited mobility:
+STEP 2 - DETECT SENIOR/SPECIAL NEEDS AND SERVICE RECIPIENT:
+- If the client mentions ANY of these keywords: "mom", "mama", "mother", "mamá", "madre", "elderly", "grandma", "abuela", "disabled", "wheelchair", "special needs", "discapacidad", "fungus", "hongos", "diabetic", "diabético", "thickened nails", "uñas engrosadas", or any indication of limited mobility:
   - Automatically recommend Senior services:
     - Senior Manicure: $55
     - Senior Pedicure: $90
     - Senior Manicure & Pedicure: $130
   - Mention these are specially designed for seniors and those with special needs or medical conditions.
+
+CRITICAL - DISTINGUISH BETWEEN CONTACT AND SERVICE RECIPIENT:
+- The person writing the email may NOT be the person receiving the service.
+- Example: "I want a service for my mom Edna" → the contact is the son/daughter, the recipient is Edna (the mom).
+- NEVER refer to the medical conditions or features as belonging to the contact person.
+- Use phrases like: "the service for your mother", "your mom\'s nails", "for the senior client", "for your loved one".
+- NEVER say "your fungus" or "your thickened nails" if the service is for someone else.
+- In the alert to Diana, clearly state: "Contact: [name]" and "Service recipient: [name]" if they are different.
 
 IMPORTANT NOTE: The owner of the business is Diana, but clients writing to us can ALSO be named Diana. If the form submission shows a client name like "Diana Llanos" or similar, treat them as a regular client (do NOT assume they are the owner). Just use their first name in the greeting if available.
 
@@ -198,7 +206,7 @@ APPOINTMENTS TODAY/THIS WEEK: ${appts}
 MESSAGE: "${msg}"
 
 Reply ONLY with JSON (no backticks, no markdown):
-{"language":"en","needs_address":false,"detected_address":null,"client_email":null,"client_phone":null,"appointment_requested":false,"acrylic_requested":false,"out_of_coverage":false,"client_name":null,"service_requested":null,"service_duration_mins":60,"proposed_datetime":null,"zone_ok":true,"reply":"your plain text reply here"}`;
+{"language":"en","needs_address":false,"detected_address":null,"client_email":null,"client_phone":null,"service_recipient":null,"appointment_requested":false,"acrylic_requested":false,"out_of_coverage":false,"client_name":null,"service_requested":null,"service_duration_mins":60,"proposed_datetime":null,"zone_ok":true,"reply":"your plain text reply here"}`;
 
   const response = await anthropic.messages.create({ model: "claude-haiku-4-5-20251001", max_tokens: 1500, messages: [{ role: "user", content: prompt }] });
   let raw = response.content[0].text.replace(/```json|```/g,"").trim();
