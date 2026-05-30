@@ -348,9 +348,11 @@ async function checkYahooMail() {
           continue;
         }
 
-        // Crear ID único para este correo (usa más caracteres del body para evitar falsos duplicados)
-        const bodyHash = (email.body||"").length + "-" + (email.body||"").substring(0, 200);
-        const emailId = `${email.from}-${email.subject}-${bodyHash}`;
+        // Crear ID único usando email del cliente (más confiable para Squarespace forms)
+        const emailMatch = (email.body||"").match(/EMAIL:\s*([^\s]+)|CORREO ELECTR[ÓO]NICO:\s*([^\s]+)/i);
+        const clientEmail = emailMatch ? (emailMatch[1] || emailMatch[2] || "") : "";
+        const bodyHash = (email.body||"").length + "-" + (email.body||"").substring(0, 500);
+        const emailId = `${email.from}-${email.subject}-${clientEmail}-${bodyHash}`;
         
         // Verificar si ya fue procesado
         if (processedEmails.has(emailId)) {
